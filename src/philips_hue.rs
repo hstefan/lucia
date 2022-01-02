@@ -1,7 +1,7 @@
 use reqwest::{self};
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::net::IpAddr;
 
 use crate::common::Result;
@@ -150,7 +150,11 @@ impl ApiClient {
         on: Option<bool>,
     ) -> Result<()> {
         let url = format!("{}/api/{}/lights/{}/state", self.base_url, api_key, id);
-        let payload = SetLightStateBody {brightness, color_mired: temperature, on};
+        let payload = SetLightStateBody {
+            brightness,
+            color_mired: temperature,
+            on,
+        };
         let body = self.client.put(&url).json(&payload).send().await?;
         println!("{}", body.text().await?);
         Ok(())

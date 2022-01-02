@@ -64,7 +64,7 @@ struct Light {
     temperature: Option<u16>,
 
     #[clap(short, long)]
-    power: Option<bool>
+    power: Option<bool>,
 }
 
 fn to_ip_addr(record: &Record) -> Option<IpAddr> {
@@ -171,7 +171,9 @@ async fn set_lights(cmd: &Light) -> Result<()> {
     let ct = cmd.temperature.map(|x| (1_000_000 / (x as u32)) as u16); // calculated micro reciprocal degree (mired);
     let client = api_client(&config).await?;
     for id in &cmd.ids {
-        client.set_light_state(username, id, brightness, ct, cmd.power).await?
+        client
+            .set_light_state(username, id, brightness, ct, cmd.power)
+            .await?
     }
     Ok(())
 }
