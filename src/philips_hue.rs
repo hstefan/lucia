@@ -59,7 +59,7 @@ pub struct LightState {
     pub alert: String,
     #[serde(rename = "colormode")]
     pub color_mode: String,
-    pub reachable: bool,
+    pub reachable: Option<bool>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -103,8 +103,20 @@ pub struct LightResponseItem {
 
 pub type LightsResponse = BTreeMap<String, LightResponseItem>;
 
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+pub struct GroupResponseItem {
+    pub name: String,
+    pub lights: Vec<String>,
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub action: LightState,
+}
+
+pub type GroupsResponse = BTreeMap<String, GroupResponseItem>;
+
 #[derive(Serialize, Debug)]
-struct SetLightStateBody {
+struct SetStateBody {
     #[serde(rename = "bri", skip_serializing_if = "Option::is_none")]
     brightness: Option<u8>,
     #[serde(rename = "ct", skip_serializing_if = "Option::is_none")]
@@ -141,18 +153,47 @@ impl ApiClient {
         Ok(lights)
     }
 
+    pub async fn get_groups(&self, api_key: &str) -> Result<GroupsResponse> {
+        let url = format!("{}/api/{}/groups", self.base_url, api_key);
+        let body = self.client.get(&url).send().await?;
+        let lights: GroupsResponse = body.json().await?;
+        Ok(lights)
+    }
+
     pub async fn set_light_state(
         &self,
         api_key: &str,
         id: &str,
         brightness: Option<u8>,
-        temperature: Option<u16>,
+        color_mired: Option<u16>,
         on: Option<bool>,
     ) -> Result<()> {
         let url = format!("{}/api/{}/lights/{}/state", self.base_url, api_key, id);
-        let payload = SetLightStateBody {
+        let payload = SetStateBody {
             brightness,
-            color_mired: temperature,
+            color_mired,
+            on,
+        };
+        let body = self.client.put(&url).json(&payload).send().await?;
+        println!("{}", body.text().await?);
+        Ok(())
+    }
+
+    pub async fn set_group_state(
+        &self,
+        api_key: &str,
+        group_id: &str,
+        brightness: Option<u8>,
+        color_mired: Option<u16>,
+        on: Option<bool>,
+    ) -> Result<()> {
+        let url = format!(
+            "{}/api/{}/groups/{}/action",
+            self.base_url, api_key, group_id
+        );
+        let payload = SetStateBody {
+            brightness,
+            color_mired,
             on,
         };
         let body = self.client.put(&url).json(&payload).send().await?;

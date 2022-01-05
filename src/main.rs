@@ -23,6 +23,7 @@ enum Lucia {
     Configure(Configure),
     Devices(Devices),
     Light(Light),
+    Groups(Groups),
 }
 
 #[derive(clap::Args)]
@@ -50,7 +51,9 @@ struct Configure {
 struct Devices {}
 
 #[derive(clap::Args)]
-/// Set properties of a list of light sources identified by their id
+/// Set properties of a list of light sources identified by their id.
+///
+/// If any of the supported arguments is not passed in that property will not be modified.
 struct Light {
     #[clap(last = true)]
     ids: Vec<String>,
@@ -64,8 +67,17 @@ struct Light {
     temperature: Option<u16>,
 
     #[clap(short, long)]
+    // Boolean value for powering on or off.
     power: Option<bool>,
+
+    #[clap(short, long)]
+    // The IDs of every group to update.
+    group_ids: Vec<String>,
 }
+
+#[derive(clap::Args)]
+/// Print all groups known by the pre-configured bridges
+struct Groups {}
 
 fn to_ip_addr(record: &Record) -> Option<IpAddr> {
     match record.kind {
@@ -121,6 +133,22 @@ async fn devices(_cmd: &Devices) -> Result<()> {
     Ok(())
 }
 
+async fn list_groups(_cmd: &Groups) -> Result<()> {
+    let config = Config::load()?;
+    let username = config
+        .user_name
+        .as_ref()
+        .expect("missing api_key in config");
+    let client = api_client(&config).await?;
+    for (id, group) in client.get_groups(username).await? {
+        println!(
+            "{}: {} (type={}, on={}, bri={}, lights={:?})",
+            id, group.name, group.type_, group.action.on, group.action.bri, group.lights,
+        );
+    }
+    Ok(())
+}
+
 async fn create_new_user(
     client: &philips_hue::ApiClient,
     poll_interval: Duration,
@@ -147,6 +175,7 @@ async fn create_new_user(
 
 async fn configure(cmd: &Configure) -> Result<()> {
     let mut cfg = config::Config::load()?;
+    cfg.bridge_ip = Some(cmd.address.to_owned());
     let client = api_client(&cfg).await?;
     let user = create_new_user(
         &client,
@@ -154,7 +183,6 @@ async fn configure(cmd: &Configure) -> Result<()> {
         Duration::from_secs(cmd.max_poll_secs),
     )
     .await?;
-    cfg.bridge_ip = Some(cmd.address.to_owned());
     cfg.user_name = Some(user.0);
     cfg.client_key = user.1;
     cfg.persist().expect("unable to save user configuration");
@@ -175,6 +203,11 @@ async fn set_lights(cmd: &Light) -> Result<()> {
             .set_light_state(username, id, brightness, ct, cmd.power)
             .await?
     }
+    for gid in &cmd.group_ids {
+        client
+            .set_group_state(username, gid, brightness, ct, cmd.power)
+            .await?;
+    }
     Ok(())
 }
 
@@ -185,9 +218,10 @@ async fn main() -> Result<()> {
         Lucia::Discover(d) => discover(&d).await.expect("failed to discover"),
         Lucia::Configure(l) => configure(&l).await.expect("link failed"),
         Lucia::Devices(d) => devices(&d).await.expect("unable to list devices"),
+        Lucia::Groups(g) => list_groups(&g).await.expect("unable to list groups"),
         Lucia::Light(b) => set_lights(&b)
             .await
-            .expect("unabled to change device brightness"),
+            .expect("unable to change device brightness"),
     }
     Ok(())
 }
